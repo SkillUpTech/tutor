@@ -149,9 +149,8 @@ def build_image(root: str, config: Config, image: str, *args: str, set_buildkit:
     # Build dev images with user id argument
     extra_dev_args = ["--build-arg", "USERID={}".format(utils.get_user_id())]
     if cache_from:
-        extra_dev_args += [
-            "--cache-from", tag for _, tag in iter_images(config, image, BASE_IMAGE_NAMES)
-        ]
+        for _, tag in iter_images(config, image, BASE_IMAGE_NAMES):
+            extra_dev_args += ["--cache-from", tag]
     for img, tag in iter_images(config, image, DEV_IMAGE_NAMES):
         images.build(tutor_env.pathjoin(root, "build", img), tag, *extra_dev_args, *args, **popen_kwargs)
 
