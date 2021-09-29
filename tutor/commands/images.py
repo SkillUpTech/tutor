@@ -1,3 +1,4 @@
+import os
 from typing import Iterator, List, Tuple
 
 import click
@@ -38,6 +39,15 @@ def images_command() -> None:
     "--no-cache", is_flag=True, help="Do not use cache when building the image"
 )
 @click.option(
+    "--no-inline-cache", is_flag=True, help="Do not inline layer caches for non-dev images. Ignored when --no-cache is set."
+)
+@click.option(
+    "--no-buildkit", is_flag=True, help="Do not explicitly set DOCKER_BUILDKIT=1."
+)
+@click.option(
+    "--no-cache-from", is_flag=True, help="Do not build dev images using inlined prod image layer caches."
+)
+@click.option(
     "-a",
     "--build-arg",
     "build_args",
@@ -59,6 +69,9 @@ def build(
     context: Context,
     image_names: List[str],
     no_cache: bool,
+    no_inline_cache: bool,
+    no_buildkit: bool,
+    no_cache_from: bool,
     build_args: List[str],
     add_hosts: List[str],
     target: str,
@@ -67,6 +80,8 @@ def build(
     command_args = []
     if no_cache:
         command_args.append("--no-cache")
+    elif not no_inline_cache:
+        command_args += ["--build-arg", "BUILDKIT_INLINE_CACHE=1"]
     for build_arg in build_args:
         command_args += ["--build-arg", build_arg]
     for add_host in add_hosts:
@@ -74,7 +89,14 @@ def build(
     if target:
         command_args += ["--target", target]
     for image in image_names:
-        build_image(context.root, config, image, *command_args)
+        build_image(
+            context.root,
+            config,
+            image,
+            *command_args,
+            set_buildkit=not no_buildkit,
+            cache_from=not no_cache_from
+        )
 
 
 @click.command(short_help="Pull images from the Docker registry")
@@ -107,21 +129,31 @@ def printtag(context: Context, image_names: List[str]) -> None:
             print(tag)
 
 
-def build_image(root: str, config: Config, image: str, *args: str) -> None:
+def build_image(root: str, config: Config, image: str, *args: str, set_buildkit: bool = False, cache_from: bool = False) -> None:
+    popen_kwargs = dict()
+    if set_buildkit:
+        env = os.environ.copy()
+        env["DOCKER_BUILDKIT"] = "1"
+        popen_kwargs["env"] = env
+
     # Build base images
     for img, tag in iter_images(config, image, BASE_IMAGE_NAMES):
-        images.build(tutor_env.pathjoin(root, "build", img), tag, *args)
+        images.build(tutor_env.pathjoin(root, "build", img), tag, *args, **popen_kwargs)
 
     # Build plugin images
     for plugin, img, tag in iter_plugin_images(config, image, "build-image"):
         images.build(
-            tutor_env.pathjoin(root, "plugins", plugin, "build", img), tag, *args
+            tutor_env.pathjoin(root, "plugins", plugin, "build", img), tag, *args, **popen_kwargs
         )
 
     # Build dev images with user id argument
-    dev_build_arg = ["--build-arg", "USERID={}".format(utils.get_user_id())]
+    extra_dev_args = ["--build-arg", "USERID={}".format(utils.get_user_id())]
+    if cache_from:
+        extra_dev_args += [
+            "--cache-from", tag for _, tag in iter_images(config, image, BASE_IMAGE_NAMES)
+        ]
     for img, tag in iter_images(config, image, DEV_IMAGE_NAMES):
-        images.build(tutor_env.pathjoin(root, "build", img), tag, *dev_build_arg, *args)
+        images.build(tutor_env.pathjoin(root, "build", img), tag, *extra_dev_args, *args, **popen_kwargs)
 
 
 def pull_image(config: Config, image: str) -> None:

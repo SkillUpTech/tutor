@@ -7,9 +7,9 @@ def get_tag(config: Config, name: str) -> str:
     return get_typed(config, key, str)
 
 
-def build(path: str, tag: str, *args: str) -> None:
+def build(path: str, tag: str, *args: str, **popen_kwargs) -> None:
     fmt.echo_info("Building image {}".format(tag))
-    utils.docker("build", "-t", tag, *args, path)
+    utils.docker("build", "-t", tag, *args, path, **popen_kwargs)
 
 
 def pull(tag: str) -> None:

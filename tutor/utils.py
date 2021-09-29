@@ -182,12 +182,12 @@ def docker_run(*command: str) -> int:
     return docker(*args, *command)
 
 
-def docker(*command: str) -> int:
+def docker(*command: str, **popen_kwargs) -> int:
     if shutil.which("docker") is None:
         raise exceptions.TutorError(
             "docker is not installed. Please follow instructions from https://docs.docker.com/install/"
         )
-    return execute("docker", *command)
+    return execute("docker", *command, **popen_kwargs)
 
 
 def docker_compose(*command: str) -> int:
@@ -214,9 +214,9 @@ def is_a_tty() -> bool:
     return os.isatty(sys.stdin.fileno())
 
 
-def execute(*command: str) -> int:
+def execute(*command: str, **popen_kwargs) -> int:
     click.echo(fmt.command(" ".join(command)))
-    with subprocess.Popen(command) as p:
+    with subprocess.Popen(command, **popen_kwargs) as p:
         try:
             result = p.wait(timeout=None)
         except KeyboardInterrupt:
